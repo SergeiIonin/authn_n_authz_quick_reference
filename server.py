@@ -1,36 +1,34 @@
 from flask import Flask, redirect, request, session, url_for, jsonify
 import requests
 import secrets
-import os
 import jwt
 from jwt import PyJWKClient
 from functools import wraps
 import urllib.parse
+from config import Config
+
+config = Config()
 
 # Flask app setup
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
+app.secret_key = config.FLASK_SECRET_KEY
 
-# Keycloak settings (Replace these values with your own)
-keycloak_url = 'http://localhost:8080'
-realm = os.getenv('REALM')
-client_id = os.getenv('CLIENT_ID')
-client_secret = os.getenv('CLIENT_SECRET')
-redirect_uri = 'http://localhost:3000/callback'
-jwks_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/certs'
-
-
-# Authorization URL for Keycloak
-authorization_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/auth'
-token_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/token'
-userinfo_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/userinfo'
+keycloak_url = config.KEYCLOAK_URL
+redirect_uri = config.KEYCLOAK_REDIRECT_URI 
+authorization_url = config.KEYCLOAK_AUTH_URL
+token_url = config.KEYCLOAK_TOKEN_URL
+userinfo_url = config.KEYCLOAK_USERINFO_URL
+jwks_url = config.KEYCLOAK_JWKS_URL
+client_id = config.KEYCLOAK_CLIENT_ID
+client_secret = config.KEYCLOAK_CLIENT_SECRET
+realm = config.KEYCLOAK_REALM
 
 def require_valid_token(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         print(f"[Protected Endpoint] {request.method} {request.path}")
         print(f"[Function Name] {f.__name__}")
-        
+
         access_token = session.get('access_token')
         if not access_token:
             return "Unauthorized - Please login first", 401
