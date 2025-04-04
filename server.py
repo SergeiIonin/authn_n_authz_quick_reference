@@ -4,6 +4,7 @@ import secrets
 import os
 import jwt
 from jwt import PyJWKClient
+from functools import wraps
 import urllib.parse
 
 # Flask app setup
@@ -23,6 +24,45 @@ jwks_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/certs'
 authorization_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/auth'
 token_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/token'
 userinfo_url = f'{keycloak_url}/realms/{realm}/protocol/openid-connect/userinfo'
+
+def require_valid_token(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        print(f"[Protected Endpoint] {request.method} {request.path}")
+        print(f"[Function Name] {f.__name__}")
+        
+        access_token = session.get('access_token')
+        if not access_token:
+            return "Unauthorized - Please login first", 401
+        
+        try:
+            jwks_client = PyJWKClient(jwks_url)
+            signing_key = jwks_client.get_signing_key_from_jwt(access_token)
+            
+            # Verify the token
+            decoded_token = jwt.decode(
+                access_token,
+                signing_key.key,
+                algorithms=["RS256"],
+                options={"verify_aud": False},
+                issuer=f"{keycloak_url}/realms/{realm}"
+            )
+            
+            # Verify the authorized party (azp)
+            if decoded_token.get('azp') != client_id:
+                return "Invalid authorized party", 401
+                
+            # Add decoded token to request context for use in the endpoint
+            request.token = decoded_token
+
+            print(f"Decoded token: {decoded_token}")
+            
+            return f(*args, **kwargs)
+            
+        except jwt.InvalidTokenError as e:
+            return f"Token validation failed: {str(e)}", 401
+            
+    return decorated_function
 
 @app.route('/')
 def index():
@@ -161,6 +201,13 @@ def foo():
         return "Token is valid and verified", 200
     except Exception as e:
         return f"Error: {e}", 401
+
+@app.route('/fiz')
+@require_valid_token
+def fiz():
+    # Token is already validated by decorator
+    # You can access the decoded token through request.token
+    return "This is a protected fiz endpoint! You are authenticated!", 200
 
 if __name__ == '__main__':
     app.run(port=3000, debug=True)
